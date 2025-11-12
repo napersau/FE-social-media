@@ -1,0 +1,515 @@
+import React, { useState } from "react";
+import {
+  Card,
+  message,
+  Modal,
+  Button,
+  Avatar,
+  Divider,
+  Typography,
+  Image,
+  Input,
+  Popover,
+  List,
+  Tabs,
+} from "antd";
+import {
+  HeartOutlined,
+  MoreOutlined,
+  CommentOutlined,
+  RetweetOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
+import CommentSection from "./CommentSection";
+import { commentService } from "../../services/commentService";
+import { postService } from "../../services/postService";
+import { likeService } from "../../services/likeService";
+import "./PostCard.css";
+
+const { Text, Paragraph } = Typography;
+const { TextArea } = Input;
+
+const PostCard = ({
+  post,
+  likingPosts,
+  expandedComments,
+  setExpandedComments,
+  commentingPosts,
+  setCommentingPosts,
+  setPosts,
+  commentForms,
+  onLike,
+  onShare,
+}) => {
+  const isLiking = likingPosts.has(post.id);
+  const commentCount = post.commentsCount || post.comments?.length || 0;
+  const isCommentsExpanded = expandedComments.has(post.id);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [editingContent, setEditingContent] = useState(post.content);
+  const [postLikes, setPostLikes] = useState([]);
+  const [loadingLikes, setLoadingLikes] = useState(false);
+
+  // Helper function để lấy images từ media array
+  const getPostImages = () => {
+    // Chỉ sử dụng media array
+    if (post.media && Array.isArray(post.media) && post.media.length > 0) {
+      // Lọc chỉ lấy media type là image
+      const imageUrls = post.media
+        .filter(media => {
+          const isImage = (media.mediaType === 'IMAGE' || media.type === 'image') && (media.mediaUrl || media.url);
+          return isImage;
+        })
+        .map(media => media.mediaUrl || media.url);
+      
+      return imageUrls;
+    }
+    
+    return [];
+  };
+
+  // Modal danh sách reactions
+  const [isReactionModalVisible, setIsReactionModalVisible] = useState(false);
+
+  // Function để fetch likes của post
+  const fetchPostLikes = async () => {
+    if (loadingLikes || !post?.id) return;
+
+    setLoadingLikes(true);
+    try {
+      const response = await likeService.getPostLikes(post.id);
+      if (response.data && response.data.code === 1000) {
+        setPostLikes(response.data.result || []);
+      } else {
+        message.error("Không thể tải danh sách người thích!");
+      }
+    } catch (error) {
+      console.error("Error fetching post likes:", error);
+      message.error("Đã xảy ra lỗi khi tải danh sách người thích!");
+    } finally {
+      setLoadingLikes(false);
+    }
+  };
+
+  const reactionOptions = [
+    { type: "Like", icon: "👍", label: "Thích", color: "#1877f2" },
+    { type: "Love", icon: "❤️", label: "Yêu thích", color: "#f33e58" },
+    { type: "Haha", icon: "😂", label: "Haha", color: "#f7b125" },
+    { type: "Wow", icon: "😮", label: "Wow", color: "#f7b125" },
+    { type: "Sad", icon: "😢", label: "Buồn", color: "#f7b125" },
+    { type: "Angry", icon: "😡", label: "Phẫn nộ", color: "#e9710f" },
+  ];
+
+  const getReactionStats = () => {
+    if (!post.likes || !Array.isArray(post.likes)) {
+      return {
+        totalCount: 0,
+        topReactions: [],
+        currentUserReaction: post.reactionType || null, // lấy trực tiếp từ backend
+        reactionCounts: {},
+      };
+    }
+
+    const reactionCounts = {};
+    post.likes.forEach((reaction) => {
+      const type = reaction.reactionType || "Like";
+      reactionCounts[type] = (reactionCounts[type] || 0) + 1;
+    });
+
+    const sortedReactions = Object.entries(reactionCounts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 3);
+
+    const topReactions = sortedReactions
+      .map(([type]) => reactionOptions.find((r) => r.type === type))
+      .filter(Boolean);
+
+    const totalCount = post.likes.length;
+
+    return {
+      totalCount,
+      topReactions,
+      currentUserReaction: post.reactionType || null, // lấy thẳng từ backend
+      reactionCounts,
+    };
+  };
+
+  const { totalCount, topReactions, currentUserReaction, reactionCounts } =
+    getReactionStats();
+  const currentReaction = reactionOptions.find(
+    (r) => r.type === currentUserReaction
+  );
+
+  const handleDefaultLike = () => {
+    if (currentUserReaction === "Like") {
+      onLike(post.id, null);
+    } else {
+      onLike(post.id, "Like");
+    }
+  };
+
+  // Box hiển thị reactions khi hover
+  const reactionContent = (
+    <div className="reaction-box">
+      {reactionOptions.map((r) => (
+        <Button
+          key={r.type}
+          type="text"
+          className="reaction-item"
+          onClick={() => onLike(post.id, r.type)}
+        >
+          <span className="reaction-emoji">{r.icon}</span>
+        </Button>
+      ))}
+    </div>
+  );
+
+  // Render like count và comment count trên cùng một hàng giống Facebook
+  const renderCountSummary = () => {
+    const likeCount = totalCount;
+    const commentCount = post.commentsCount || post.comments?.length || 0;
+    
+    if (likeCount === 0 && commentCount === 0) return null;
+    
+    return (
+      <div className="count-summary">
+        <div className="left-counts">
+          {likeCount > 0 && (
+            <span
+              className="like-count-text"
+              title="Xem ai đã thả cảm xúc"
+              onClick={() => {
+                setIsReactionModalVisible(true);
+                fetchPostLikes();
+              }}
+            >
+              {totalCount} lượt thả cảm xúc
+            </span>
+          )}
+        </div>
+        <div className="right-counts">
+          {commentCount > 0 && (
+            <span
+              className="comment-count-text"
+              onClick={handleToggleComments}
+            >
+              {commentCount === 1 ? '1 bình luận' : `${commentCount} bình luận`}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const handleDeletePost = (postId) => {
+    Modal.confirm({
+      title: "Xác nhận xoá bài viết",
+      content: "Bạn có chắc muốn xoá bài viết này không?",
+      okText: "Xoá",
+      okType: "danger",
+      cancelText: "Hủy",
+      onOk: async () => {
+        try {
+          const response = await postService.deletePost(postId);
+          if (response.data?.code === 1000) {
+            setPosts((prev) => prev.filter((p) => p.id !== postId));
+            message.success("Đã xoá bài viết thành công");
+          } else {
+            message.error("Xoá bài viết thất bại");
+          }
+        } catch (error) {
+          console.error("Lỗi khi xoá bài viết:", error);
+          message.error("Đã xảy ra lỗi");
+        }
+      },
+    });
+  };
+
+  const handleEditPost = async () => {
+    try {
+      const response = await postService.updatePost(post.id, {
+        content: editingContent,
+      });
+      if (response.data?.code === 1000) {
+        setPosts((prevPosts) =>
+          prevPosts.map((p) =>
+            p.id === post.id ? { ...p, content: editingContent } : p
+          )
+        );
+        message.success("Đã cập nhật bài viết");
+        setIsEditModalVisible(false);
+      } else {
+        message.error("Cập nhật thất bại");
+      }
+    } catch (error) {
+      console.error("Lỗi khi cập nhật bài viết:", error);
+      message.error("Đã xảy ra lỗi");
+    }
+  };
+
+  const handleToggleComments = async () => {
+    if (isCommentsExpanded) {
+      setExpandedComments((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(post.id);
+        return newSet;
+      });
+    } else {
+      try {
+        const response = await commentService.getCommentsByPostId(post.id);
+        if (response.data?.code === 1000) {
+          const fetchedComments = response.data.result;
+          setPosts((prev) =>
+            prev.map((p) =>
+              p.id === post.id ? { ...p, comments: fetchedComments } : p
+            )
+          );
+          setExpandedComments((prev) => new Set(prev).add(post.id));
+        } else {
+          message.error("Không thể tải bình luận");
+        }
+      } catch (err) {
+        console.error("Lỗi khi tải bình luận:", err);
+        message.error("Đã xảy ra lỗi");
+      }
+    }
+  };
+
+  // Nhóm người theo reactionType từ postLikes (đã fetch)
+  const groupedReactions = postLikes.reduce((acc, like) => {
+    const type = like.reactionType || "Like";
+    if (!acc[type]) acc[type] = [];
+    acc[type].push(like);
+    return acc;
+  }, {});
+
+  const allReactions = postLikes; // Sử dụng trực tiếp postLikes
+
+  return (
+    <>
+      <Card className="post-card" hoverable>
+        <div className="post-header">
+          <Avatar size={40} src={post.user.avatarUrl} icon={<UserOutlined />} />
+          <div className="post-user-info">
+            <Text strong>
+              {post.user.firstName || "Anonymous"} {post.user.lastName}
+            </Text>
+            <Text type="secondary" className="post-time">
+              {post.createdAt
+                ? new Date(post.createdAt).toLocaleString("vi-VN")
+                : "Vừa xong"}
+            </Text>
+          </div>
+          <div style={{ marginLeft: "auto" }}>
+            <Button
+              icon={<MoreOutlined />}
+              onClick={() =>
+                Modal.info({
+                  title: "Tùy chọn",
+                  content: (
+                    <div>
+                      <Button
+                        type="text"
+                        onClick={() => {
+                          setEditingContent(post.content);
+                          setIsEditModalVisible(true);
+                        }}
+                      >
+                        Chỉnh sửa
+                      </Button>
+                      <Button
+                        type="text"
+                        danger
+                        onClick={() => handleDeletePost(post.id)}
+                      >
+                        Xoá bài viết
+                      </Button>
+                    </div>
+                  ),
+                })
+              }
+            />
+          </div>
+        </div>
+
+        <div className="post-content">
+          <Paragraph>{post.content}</Paragraph>
+          {(() => {
+            const images = getPostImages();
+            if (images.length === 0) return null;
+
+            return (
+              <div className="post-images">
+                {images.length === 1 ? (
+                  // Hiển thị 1 ảnh
+                  <Image src={images[0]} className="post-image" />
+                ) : (
+                  // Hiển thị nhiều ảnh trong grid
+                  <div className={`post-images-grid ${images.length > 4 ? 'grid-many' : `grid-${images.length}`}`}>
+                    {images.slice(0, 5).map((imageUrl, index) => (
+                      <div key={index} className="image-container">
+                        <Image 
+                          src={imageUrl} 
+                          className="post-image-grid"
+                          style={{ objectFit: 'cover' }}
+                        />
+                        {/* Hiển thị overlay "+X" nếu có nhiều hơn 5 ảnh */}
+                        {index === 4 && images.length > 5 && (
+                          <div className="more-images-overlay">
+                            +{images.length - 5}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Hiển thị số lượng like và comment trên cùng một hàng */}
+        {renderCountSummary()}
+
+        <Divider className="post-divider" />
+        <div className="post-actions">
+          {/* Nút Reaction */}
+          <Popover content={reactionContent} trigger="hover" placement="top">
+            <Button
+              type="text"
+              loading={isLiking}
+              onClick={handleDefaultLike}
+              className={`action-button ${
+                currentUserReaction ? "reacted" : ""
+              }`}
+              style={{ color: currentReaction?.color || "#65676b" }}
+              icon={
+                currentReaction ? (
+                  <span className="reaction-emoji">{currentReaction.icon}</span>
+                ) : (
+                  <HeartOutlined />
+                )
+              }
+            >
+              <span
+                className={`button-text ${
+                  currentUserReaction ? "reacted" : ""
+                }`}
+              >
+                {currentUserReaction || "Thích"}
+              </span>
+            </Button>
+          </Popover>
+
+          <Button
+            type="text"
+            icon={<CommentOutlined />}
+            onClick={handleToggleComments}
+            className={`action-button ${isCommentsExpanded ? "active" : ""}`}
+          >
+            Bình luận
+          </Button>
+
+          <Button
+            type="text"
+            icon={<RetweetOutlined />}
+            onClick={() => onShare(post.id)}
+            className="action-button"
+          >
+            Chia sẻ {post.shares ? `(${post.shares})` : ""}
+          </Button>
+        </div>
+
+        {isCommentsExpanded && (
+          <CommentSection
+            post={post}
+            commentingPosts={commentingPosts}
+            setCommentingPosts={setCommentingPosts}
+            setPosts={setPosts}
+            commentForms={commentForms}
+          />
+        )}
+      </Card>
+
+      {/* Modal chỉnh sửa bài viết */}
+      <Modal
+        title="Chỉnh sửa bài viết"
+        open={isEditModalVisible}
+        onOk={handleEditPost}
+        onCancel={() => setIsEditModalVisible(false)}
+        okText="Lưu"
+        cancelText="Hủy"
+      >
+        <TextArea
+          value={editingContent}
+          onChange={(e) => setEditingContent(e.target.value)}
+          rows={5}
+          maxLength={1000}
+        />
+      </Modal>
+
+      {/* Modal hiển thị danh sách reactions */}
+      <Modal
+        title="Người đã thả cảm xúc"
+        open={isReactionModalVisible}
+        onCancel={() => setIsReactionModalVisible(false)}
+        footer={null}
+        loading={loadingLikes}
+      >
+        <Tabs
+          defaultActiveKey="all"
+          items={[
+            {
+              key: "all",
+              label: `Tất cả (${allReactions.length})`,
+              children: (
+                <List
+                  dataSource={allReactions}
+                  renderItem={(item) => (
+                    <List.Item>
+                      <List.Item.Meta
+                        avatar={
+                          <Avatar src={item.user?.avatarUrl}>
+                            {item.user?.firstName?.[0]}
+                          </Avatar>
+                        }
+                        title={`${item.user?.firstName || ""} ${
+                          item.user?.lastName || ""
+                        }`}
+                        description={item.reactionType}
+                      />
+                    </List.Item>
+                  )}
+                />
+              ),
+            },
+            ...Object.entries(groupedReactions).map(([type, users]) => ({
+              key: type,
+              label: `${type} (${users.length})`,
+              children: (
+                <List
+                  dataSource={users}
+                  renderItem={(item) => (
+                    <List.Item>
+                      <List.Item.Meta
+                        avatar={
+                          <Avatar src={item.user?.avatarUrl}>
+                            {item.user?.firstName?.[0]}
+                          </Avatar>
+                        }
+                        title={`${item.user?.firstName || ""} ${
+                          item.user?.lastName || ""
+                        }`}
+                      />
+                    </List.Item>
+                  )}
+                />
+              ),
+            })),
+          ]}
+        />
+      </Modal>
+    </>
+  );
+};
+
+export default PostCard;
