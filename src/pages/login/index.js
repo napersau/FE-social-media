@@ -37,7 +37,7 @@ const Login = () => {
       };
 
       const response = await axios.post(
-        "http://localhost:8080/api/v1/auth/token",
+        "https://be-social-media-g3w4.onrender.com/api/v1/auth/token",
         authRequest,
         {
           headers: {
@@ -73,7 +73,7 @@ const Login = () => {
   };
 
   const handleGoogleLoginRedirect = () => {
-    window.location.href = "http://localhost:8080/oauth2/authorization/google";
+    window.location.href = "https://be-social-media-g3w4.onrender.com/oauth2/authorization/google";
   };
 
   return (
