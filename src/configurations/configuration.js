@@ -1,7 +1,7 @@
 export const OAuthConfig = {};
 
 export const CONFIG = {
-  API_GATEWAY: "http://localhost:8080/api/v1",
+  API_GATEWAY: process.env.REACT_APP_API_URL,
 };
 
 export const API = {
