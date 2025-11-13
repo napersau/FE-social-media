@@ -20,7 +20,7 @@ const Register = () => {
 
   const onFinish = async (values) => {
     try {
-      const response = await axios.post("http://localhost:8080/api/v1/users", values)
+      const response = await axios.post("https://be-social-media-g3w4.onrender.com/api/v1/users", values)
       if (response.data?.code === 1000) {
         message.success("Đăng ký thành công!", 3)
         setTimeout(() => {
